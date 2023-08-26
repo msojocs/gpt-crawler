@@ -4,7 +4,7 @@ const dirList = fs.readdirSync('.')
 const resultDirList = dirList.filter(e=>e.startsWith('1'))
 // const latestDir = resultDirList[resultDirList.length - 1]
 // console.log(latestDir)
-const latestDir = 'result'
+const latestDir = 'task/chat+gpt+4/result'
 const resultList = fs.readdirSync(latestDir).filter(e => e.includes('page'))
 console.log(resultList)
 const list = []
