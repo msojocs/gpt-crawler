@@ -5,7 +5,7 @@ const https = require('https')
 const http = require('http')
 const fs = require('fs')
 
-const target = 'chat+gpt+4'
+const target = 'api.openai.com'
 const timeout = 30000
 const continueTask = false
 
@@ -222,7 +222,7 @@ class OpenAi {
                     }
                 ]
             }
-
+            const reqBody = JSON.stringify(body)
             const req = https.request({
                 port: 443,
                 host: '52.152.96.252',
@@ -230,11 +230,13 @@ class OpenAi {
                 path: 'https://api.openai.com/v1/chat/completions',
                 rejectUnauthorized: false,
                 headers: {
-                    Authorization: `Bearer ${this.token}`
+                    Authorization: `Bearer ${this.token}`,
+                    'Content-Type': 'application/json',
+                    // 'Content-Length': reqBody.length,
                 },
                 timeout
             });
-            req.write(JSON.stringify(body))
+            req.write(reqBody)
             req.end();
             req.on('response', (res) => {
                 res.on('data', chunk => {
